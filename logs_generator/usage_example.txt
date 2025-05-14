@@ -1,0 +1,2 @@
+pip install argparse
+python generate_logs.py --output-dir logs --runs 200 --anomaly-prob 0.03
