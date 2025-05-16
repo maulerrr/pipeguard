@@ -1,15 +1,20 @@
-FROM python:3.13-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# 1) copy & install requirements
+# install dos2unix (to convert CRLF→LF)
+RUN apt-get update && apt-get install -y dos2unix && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2) copy all scripts + model
+# copy sources
 COPY detect_cli.py openai_utils.py convert_workflow_logs.py model.pkl ./
 
-RUN chmod +x detect_cli.py convert_workflow_logs.py
+# convert line endings
+RUN dos2unix *.py
 
-# 3) entrypoint: wrapper that converts if needed, then runs detection
+# make sure they’re executable
+RUN chmod +x *.py
+
 ENTRYPOINT ["./detect_cli.py"]

@@ -10,17 +10,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    #   - name: Build & Test (project)
-    #     run: |
-    #       python -m pip install --upgrade pip
-    #       pip install -r requirements.txt 
-    #       pytest --maxfail=1 --disable-warnings -q
-
-      - name: Dump runner log
+      - name: Setup logging environment
         run: |
-          cp /home/runner/work/${{ github.repository }}/_temp/_github_workflow.log workflow.log
+          mkdir -p $HOME/logs
+          echo "LOG_FILE=$HOME/logs/workflow.log" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8  # Or mypy, pylint, black, etc.
+
+      - name: Run linter
+        run: |
+          python -m flake8 . > "$LOG_FILE" 2>&1 || true
+
+      - name: Append additional logs if needed
+        run: |
+          echo "=== System Info ===" >> "$LOG_FILE"
+          uname -a >> "$LOG_FILE"
+          echo "=== End of Logs ===" >> "$LOG_FILE"
 
       - name: Run anomaly detection
         env:
@@ -28,7 +39,7 @@ jobs:
         run: |
           docker pull maulerrr/pipeguard:latest
           docker run --rm \
-            -v "${{ github.workspace }}/workflow.log":/app/workflow.log \
+            -v "${HOME}/logs/workflow.log":/app/workflow.log \
             maulerrr/pipeguard:latest \
             /app/workflow.log \
             --threshold 0.05 \
