@@ -1,4 +1,3 @@
-# .github/workflows/sast-and-anomaly.yml
 name: SAST + Anomaly Detection
 
 on:
