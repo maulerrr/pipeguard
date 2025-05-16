@@ -5,11 +5,21 @@ import argparse
 import json
 import sys
 from pathlib import Path
-
 import pandas as pd
-
 from openai import OpenAI
 import openai_utils
+import subprocess
+
+# — if input ends with .log, convert first:
+inp = Path(sys.argv[1])
+if inp.suffix == ".log":
+    tmp = Path("/tmp/all_logs.json")
+    subprocess.run([
+        sys.executable, "convert_workflow_logs.py",
+        str(inp), str(tmp)
+    ], check=True)
+    # replace the first arg so the rest of the script sees JSON:
+    sys.argv[1] = str(tmp)
 
 def load_records(path: Path):
     try:

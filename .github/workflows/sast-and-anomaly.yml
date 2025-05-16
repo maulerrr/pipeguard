@@ -1,14 +1,9 @@
-name: SAST + Anomaly Detection
+name: CI/CD Anomaly Detection
 
 on:
   push:
-    paths:
-      - '**/*.py'
-      - 'generate_logs.py'
-      - 'train_model.py'
-      - 'detect_cli.py'
-      - 'openai_utils.py'
-  pull_request:
+    branches:
+      - main
 
 jobs:
   detect:
@@ -18,39 +13,40 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install Semgrep (free SAST)
+      # 1) Build & Test, wrapped in ::group:: markers
+      - name: Build & Test (grouped)
         run: |
+          echo "::group::checkout"
+          git checkout ${{ github.sha }}
+          echo "::endgroup::"
+
+          echo "::group::install"
           python -m pip install --upgrade pip
-          pip install semgrep
+          pip install -r requirements.txt
+          echo "::endgroup::"
 
-      - name: Run Semgrep scan
-        run: semgrep --config=p/ci --json --output=sast_logs.json .
+          echo "::group::test"
+          pytest --maxfail=1 --disable-warnings -q
+          echo "::endgroup::"
 
-      - name: Merge Semgrep output
+      # 2) Capture the runner’s full log
+      - name: Dump runner log
         run: |
-            python - << 'EOF'
-            import json
-            import glob
+          # On GitHub-hosted runners the debug log lives here:
+          cp /home/runner/work/${{ github.repository }}/_temp/_github_workflow.log workflow.log
 
-            records = []
-            for fn in glob.glob("sast_logs.json"):
-                with open(fn, encoding="utf-8") as f:
-                    records.extend(json.load(f))
-
-            with open("all_logs.json", "w", encoding="utf-8") as f:
-                json.dump(records, f, ensure_ascii=False)
-            EOF
-
+      # 3) Pull your anomaly-detector Docker image
       - name: Pull anomaly-detector image
-        run: docker pull YOUR_DOCKERHUB_USERNAME/cicd-anomaly:latest
+        run: docker pull maulerrr/pipeguard:latest
 
-      - name: Run anomaly detection
+      # 4) Run the detector against the captured log
+      - name: Detect anomalies in CI workflow
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           docker run --rm \
-            -v "${{ github.workspace }}/all_logs.json":/data/all_logs.json \
+            -v "${{ github.workspace }}/workflow.log":/app/workflow.log \
             maulerrr/pipeguard:latest \
-            --input /data/all_logs.json \
+            /app/workflow.log \
             --threshold 0.05 \
             --describe

@@ -2,17 +2,14 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Скопировать зависимости
-COPY requirements.txt .
-
-# Установить их
+# 1) copy & install requirements
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Скопировать CLI-утилиту, модель и утилиты
-COPY detect_cli.py openai_utils.py model.pkl ./
+# 2) copy all scripts + model
+COPY detect_cli.py openai_utils.py convert_workflow_logs.py model.pkl ./
 
-# Сделать скрипт исполняемым
-RUN chmod +x detect_cli.py
+RUN chmod +x detect_cli.py convert_workflow_logs.py
 
-# По умолчанию запускаем detect_cli.py
-ENTRYPOINT ["python", "detect_cli.py"]
+# 3) entrypoint: wrapper that converts if needed, then runs detection
+ENTRYPOINT ["./detect_cli.py"]
