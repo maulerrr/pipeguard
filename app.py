@@ -3,76 +3,92 @@
 
 import streamlit as st
 import pandas as pd
-import joblib
+from typing import List, Dict, Any
 import openai_utils
 
-@st.cache_resource
-def load_model():
-    artifact = joblib.load("model.pkl")
-    return artifact["model"], artifact["features"]
+st.set_page_config(page_title="Аномалии CI/CD логов", layout="wide")
+st.title("🔍 Аномалии CI/CD логов")
 
-def feature_engineering(df: pd.DataFrame):
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df = df.sort_values(["run_id", "timestamp"])
-    df["delta"] = (
-        df.groupby("run_id")["timestamp"]
-          .diff()
-          .dt.total_seconds()
-          .fillna(0)
-    )
-    stages_ohe = pd.get_dummies(df["stage"], prefix="stage")
-    X = pd.concat([df[["delta"]], stages_ohe], axis=1)
-    return X
-
-st.title("Аномалии CI/CD логов")
-model, feature_cols = load_model()
+# Порог вероятности аномалии
+threshold = st.sidebar.slider(
+    "Порог вероятности аномалии",
+    min_value=0.0, max_value=1.0, value=0.5, step=0.01
+)
 
 uploaded = st.file_uploader(
-    "Загрузите JSON-файлы логов",
+    "Загрузите один или несколько JSON-файлов логов",
     type="json",
     accept_multiple_files=True
 )
 
 if uploaded:
-    # 1. Загрузка и объединение данных
-    dfs = [pd.read_json(f) for f in uploaded]
+    # 1. Чтение и объединение
+    dfs = []
+    for f in uploaded:
+        try:
+            dfs.append(pd.read_json(f))
+        except ValueError:
+            st.warning(f"Не удалось прочитать {f.name}")
+    if not dfs:
+        st.error("Нет корректных JSON-файлов")
+        st.stop()
+
     data = pd.concat(dfs, ignore_index=True)
+    st.sidebar.metric("Всего записей", len(data))
 
-    # 2. Фичи и предсказания
-    X = feature_engineering(data)
-    for col in feature_cols:
-        if col not in X.columns:
-            X[col] = 0
-    X = X[feature_cols]
+    # 2. Детекция
+    # преобразуем DataFrame в список dict-ов
+    records: List[Dict[str, Any]] = data.to_dict(orient="records")
+    anomalies = openai_utils.detect_anomalies(records, threshold=threshold)
+    n_anom = len(anomalies)
+    st.sidebar.metric("Найдено аномалий", n_anom)
 
-    preds = model.predict(X)
-    data["anomaly"] = preds == -1
+    # 3. Отображение таблицы аномалий
+    if n_anom:
+        df_anom = pd.DataFrame(anomalies)
+        # упорядочим по вероятности
+        df_anom = df_anom.sort_values("anomaly_prob", ascending=False)
+        st.subheader("⚠️ Список потенциальных аномалий")
+        st.dataframe(
+            df_anom[[
+                "anomaly_prob", "run_id", "stage", "status", "timestamp", "message"
+            ]],
+            use_container_width=True
+        )
 
-    # 3. Отображение
-    st.subheader("Результаты детекции")
-    st.write("Всего записей:", len(data))
-    st.write("Аномалий:", int(data["anomaly"].sum()))
-    st.dataframe(data[data["anomaly"]])
-
-    # 4. Генерация описания через OpenAI
-    if data["anomaly"].any():
-        if st.button("🔍 Описать аномалии (OpenAI)"):
-            with st.spinner("Генерируем описание…"):
-                simple_list = data[data["anomaly"]][
-                    ["run_id", "stage", "timestamp", "message"]
-                ].to_dict(orient="records")
+        # 4. Описание через OpenAI
+        if st.button("📝 Описать аномалии"):
+            with st.spinner("Генерируем обзор…"):
                 try:
-                    summary = openai_utils.describe_anomalies(simple_list)
-                    st.markdown("**Обзор аномалий:**")
+                    summary = openai_utils.describe_anomalies(anomalies)
+                    st.markdown("**Обзор аномалий (2–3 предложения):**")
                     st.write(summary)
                 except Exception as e:
                     st.error(f"Ошибка при вызове OpenAI: {e}")
+    else:
+        st.info("Аномалий выше порога не найдено")
 
-    # 5. Скачать результат
-    csv = data.to_csv(index=False).encode("utf-8")
+    # 5. Скачивание всего результата с метками и вероятностями
+    # Добавим колонку probability в исходный DataFrame
+    df_all = data.copy()
+    # сначала инициализируем всем нулевыми
+    df_all["anomaly_prob"] = 0.0
+    # заполнить для найденных
+    for rec in anomalies:
+        # найдём строки, совпадающие по индексу и run_id+timestamp+stage
+        mask = (
+            (df_all["run_id"] == rec["run_id"]) &
+            (df_all["timestamp"].astype(str) == str(rec["timestamp"])) &
+            (df_all["stage"] == rec["stage"])
+        )
+        df_all.loc[mask, "anomaly_prob"] = rec["anomaly_prob"]
+
+    csv = df_all.to_csv(index=False).encode("utf-8")
     st.download_button(
-        "Скачать все записи с меткой",
+        "⬇️ Скачать результат (все записи с вероятностями)",
         data=csv,
-        file_name="results.csv",
+        file_name="cicd_anomaly_results.csv",
         mime="text/csv"
     )
+else:
+    st.info("Загрузите JSON-файлы логов для анализа")
