@@ -51,7 +51,7 @@ jobs:
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/all_logs.json":/data/all_logs.json \
-            YOUR_DOCKERHUB_USERNAME/cicd-anomaly:latest \
+            maulerrr/pipeguard:latest \
             --input /data/all_logs.json \
             --threshold 0.05 \
             --describe
