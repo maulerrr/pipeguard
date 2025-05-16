@@ -10,40 +10,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      # 1) Build & Test, wrapped in ::group:: markers
-      - name: Build & Test (grouped)
+      - name: Build & Test (project)
         run: |
-          echo "::group::checkout"
-          git checkout ${{ github.sha }}
-          echo "::endgroup::"
-
-          echo "::group::install"
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          echo "::endgroup::"
-
-          echo "::group::test"
+          pip install -r requirements.txt 
           pytest --maxfail=1 --disable-warnings -q
-          echo "::endgroup::"
 
-      # 2) Capture the runner’s full log
       - name: Dump runner log
         run: |
-          # On GitHub-hosted runners the debug log lives here:
           cp /home/runner/work/${{ github.repository }}/_temp/_github_workflow.log workflow.log
 
-      # 3) Pull your anomaly-detector Docker image
-      - name: Pull anomaly-detector image
-        run: docker pull maulerrr/pipeguard:latest
-
-      # 4) Run the detector against the captured log
-      - name: Detect anomalies in CI workflow
+      - name: Run anomaly detection
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          docker pull maulerrr/pipeguard:latest
           docker run --rm \
             -v "${{ github.workspace }}/workflow.log":/app/workflow.log \
             maulerrr/pipeguard:latest \
