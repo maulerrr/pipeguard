@@ -1,9 +1,14 @@
+# .github/workflows/sast-and-anomaly.yml
 name: SAST + Anomaly Detection
 
 on:
   push:
     paths:
       - '**/*.py'
+      - 'generate_logs.py'
+      - 'train_model.py'
+      - 'detect_cli.py'
+      - 'openai_utils.py'
   pull_request:
 
 jobs:
@@ -24,12 +29,16 @@ jobs:
 
       - name: Merge Semgrep output
         run: |
-          python - << 'EOF'
-            import json, glob
+            python - << 'EOF'
+            import json
+            import glob
+
             records = []
             for fn in glob.glob("sast_logs.json"):
-                records.extend(json.load(open(fn, encoding="utf-8")))
-            with open("all_logs.json","w", encoding="utf-8") as f:
+                with open(fn, encoding="utf-8") as f:
+                    records.extend(json.load(f))
+
+            with open("all_logs.json", "w", encoding="utf-8") as f:
                 json.dump(records, f, ensure_ascii=False)
             EOF
 
@@ -41,7 +50,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}/all_logs.json:/data/all_logs.json \
+            -v "${{ github.workspace }}/all_logs.json":/data/all_logs.json \
             YOUR_DOCKERHUB_USERNAME/cicd-anomaly:latest \
             --input /data/all_logs.json \
             --threshold 0.05 \
