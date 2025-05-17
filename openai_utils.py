@@ -25,7 +25,7 @@ def load_anomaly_model(path: str = "model.pkl") -> Any:
             print(f"Ошибка: не найден файл модели по пути '{path}'", file=sys.stderr)
             sys.exit(1)
         _model = joblib.load(path)
-return _model
+    return _model
 
 def detect_anomalies(
     records: List[Dict[str, Any]],
