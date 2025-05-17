@@ -1,19 +1,21 @@
-# openai_utils.py
-
 import os
 import sys
 import joblib
 import pandas as pd
 
 from typing import List, Dict, Any
-from openai import OpenAI
-import openai
 
-# ——— 1) Load & validate OpenAI key ——————————————————————————————
-_api_key = os.getenv("OPENAI_API_KEY")
-if not _api_key:
-    raise RuntimeError("OPENAI_API_KEY environment variable not set")
-client = OpenAI(api_key=_api_key)
+_client: Any = None
+
+def _get_openai_client() -> Any:
+    global _client
+    if _client is None:
+        from openai import OpenAI, OpenAIError
+        key = os.getenv("OPENAI_API_KEY")
+        if not key:
+            raise RuntimeError("OpenAI API key not set (pass via --openai-key or env OPENAI_API_KEY)")
+        _client = OpenAI(api_key=key)
+    return _client
 
 # ——— 2) Lazy‐load the anomaly model pipeline ——————————————————————
 _model: Any = None
@@ -31,20 +33,12 @@ def detect_anomalies(
     records: List[Dict[str, Any]],
     threshold: float = 0.5
 ) -> List[Dict[str, Any]]:
-    """
-    records: список словарей с ключами 'run_id','stage','status','timestamp','message'
-    threshold: минимальная вероятностная оценка аномалии (0–1)
-    Возвращает: подсписок записей, где модель.predict_proba(...)[:,1] > threshold,
-                каждая запись дополняется полем 'anomaly_prob'.
-    """
     if not records:
         return []
 
     df = pd.DataFrame(records)
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
     df = df.sort_values(["run_id", "timestamp"])
-
-    # replicate the same feature‐prep as your supervised pipeline expects:
     df["delta"] = (
         df.groupby("run_id")["timestamp"]
           .diff()
@@ -54,12 +48,9 @@ def detect_anomalies(
 
     X = df[["delta", "stage", "status", "message"]]
     model = load_anomaly_model()
-
-    # predict_proba → second column is P(anomaly)
     probs = model.predict_proba(X)[:, 1]
     df["anomaly_prob"] = probs
 
-    # filter by threshold
     anomalies = df[df["anomaly_prob"] > threshold]
     return anomalies.to_dict(orient="records")
 
@@ -68,13 +59,11 @@ def describe_anomalies(
     anomalies: List[Dict[str, Any]],
     max_tokens: int = 256
 ) -> str:
-    """
-    anomalies: список от detect_anomalies, каждая запись имеет
-               run_id, stage, status, timestamp, message, anomaly_prob
-    Возвращает: строку с обзором от ChatGPT
-    """
     if not anomalies:
         return "Аномалий не обнаружено."
+
+    # Only now do we fetch/validate the key & client
+    client = _get_openai_client()
 
     details = "\n".join(
         f"- [P={a['anomaly_prob']:.2f}] run {a['run_id']}, "
@@ -96,19 +85,15 @@ def describe_anomalies(
             max_tokens=max_tokens,
             temperature=0.7,
         )
-    except openai.OpenAIError as e:
+    except Exception as e:
         return f"Ошибка при запросе к OpenAI: {e}"
 
     return resp.choices[0].message.content.strip()
 
-# ——— Optional convenience: run detection + description —————————————————
 def detect_and_describe(
     records: List[Dict[str, Any]],
     threshold: float = 0.5,
     max_tokens: int = 256
 ) -> str:
-    """
-    Быстрый путь: детектим аномалии и сразу генерируем их обзор.
-    """
     ann = detect_anomalies(records, threshold=threshold)
     return describe_anomalies(ann, max_tokens=max_tokens)
