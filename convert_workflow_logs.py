@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import re
 import json
 import sys
@@ -16,7 +13,7 @@ stage = "init"
 records = []
 with open(raw_log, encoding="utf-8") as f:
     for line in f:
-        # group markers
+        
         m = re.match(r"^::group::(.+)", line)
         if m:
             stage = m.group(1).strip()

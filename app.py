@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import streamlit as st
 import pandas as pd
 from typing import List, Dict, Any
@@ -9,7 +6,7 @@ import openai_utils
 st.set_page_config(page_title="Аномалии CI/CD логов", layout="wide")
 st.title("🔍 Аномалии CI/CD логов")
 
-# Порог вероятности аномалии
+
 threshold = st.sidebar.slider(
     "Порог вероятности аномалии",
     min_value=0.0, max_value=1.0, value=0.5, step=0.01
@@ -22,7 +19,6 @@ uploaded = st.file_uploader(
 )
 
 if uploaded:
-    # 1. Чтение и объединение
     dfs = []
     for f in uploaded:
         try:
@@ -35,18 +31,15 @@ if uploaded:
 
     data = pd.concat(dfs, ignore_index=True)
     st.sidebar.metric("Всего записей", len(data))
-
-    # 2. Детекция
-    # преобразуем DataFrame в список dict-ов
+    
     records: List[Dict[str, Any]] = data.to_dict(orient="records")
     anomalies = openai_utils.detect_anomalies(records, threshold=threshold)
     n_anom = len(anomalies)
     st.sidebar.metric("Найдено аномалий", n_anom)
-
-    # 3. Отображение таблицы аномалий
+    
     if n_anom:
         df_anom = pd.DataFrame(anomalies)
-        # упорядочим по вероятности
+        
         df_anom = df_anom.sort_values("anomaly_prob", ascending=False)
         st.subheader("⚠️ Список потенциальных аномалий")
         st.dataframe(
@@ -55,8 +48,7 @@ if uploaded:
             ]],
             use_container_width=True
         )
-
-        # 4. Описание через OpenAI
+        
         if st.button("📝 Описать аномалии"):
             with st.spinner("Генерируем обзор…"):
                 try:
@@ -67,15 +59,11 @@ if uploaded:
                     st.error(f"Ошибка при вызове OpenAI: {e}")
     else:
         st.info("Аномалий выше порога не найдено")
-
-    # 5. Скачивание всего результата с метками и вероятностями
-    # Добавим колонку probability в исходный DataFrame
+    
     df_all = data.copy()
-    # сначала инициализируем всем нулевыми
     df_all["anomaly_prob"] = 0.0
-    # заполнить для найденных
     for rec in anomalies:
-        # найдём строки, совпадающие по индексу и run_id+timestamp+stage
+        
         mask = (
             (df_all["run_id"] == rec["run_id"]) &
             (df_all["timestamp"].astype(str) == str(rec["timestamp"])) &

@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import argparse
 import json
 import sys
@@ -10,7 +7,6 @@ from openai import OpenAI
 import openai_utils
 import subprocess
 
-# — if input ends with .log, convert first:
 inp = Path(sys.argv[1])
 if inp.suffix == ".log":
     tmp = Path("/tmp/all_logs.json")
@@ -18,7 +14,7 @@ if inp.suffix == ".log":
         sys.executable, "convert_workflow_logs.py",
         str(inp), str(tmp)
     ], check=True)
-    # replace the first arg so the rest of the script sees JSON:
+    
     sys.argv[1] = str(tmp)
 
 def load_records(path: Path):
@@ -34,10 +30,9 @@ def load_records(path: Path):
 
 def override_openai_key(key: str):
     """Re-instantiate the OpenAI client inside openai_utils."""
-    # set env so any further logic picking from os.getenv still works
     import os
     os.environ["OPENAI_API_KEY"] = key
-    # override the client object
+    
     openai_utils.client = OpenAI(api_key=key)
 
 def main():
@@ -70,11 +65,9 @@ def main():
     )
     args = parser.parse_args()
 
-    # 0) Override OpenAI key if provided
     if args.openai_key:
         override_openai_key(args.openai_key)
 
-    # 1) Load logs
     path = Path(args.input)
     if not path.exists():
         print(f"Error: file {path} not found", file=sys.stderr)
@@ -85,8 +78,7 @@ def main():
     except Exception as e:
         print(f"Error reading {path}: {e}", file=sys.stderr)
         sys.exit(1)
-
-    # 2) Detect anomalies
+    
     anomalies = openai_utils.detect_anomalies(
         records,
         threshold=args.threshold
@@ -96,7 +88,7 @@ def main():
         print("Аномалий не обнаружено ✅")
         sys.exit(0)
 
-    # 3) Print anomalies
+    
     print(f"Найдено аномалий: {len(anomalies)} (threshold={args.threshold})\n")
     for a in anomalies:
         print(
@@ -104,8 +96,7 @@ def main():
             f"stage={a['stage']}, status={a['status']}, "
             f"ts={a['timestamp']}, msg=\"{a['message']}\""
         )
-
-    # 4) Optional OpenAI summary
+    
     if args.describe:
         print("\nГенерируем обзор аномалий через OpenAI…")
         try:
@@ -115,7 +106,6 @@ def main():
         except Exception as e:
             print(f"[OpenAI error] {e}", file=sys.stderr)
 
-    # exit code 1 to indicate anomalies found
     sys.exit(1)
 
 if __name__ == "__main__":

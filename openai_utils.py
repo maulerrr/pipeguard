@@ -17,7 +17,6 @@ def _get_openai_client() -> Any:
         _client = OpenAI(api_key=key)
     return _client
 
-# ——— 2) Lazy‐load the anomaly model pipeline ——————————————————————
 _model: Any = None
 def load_anomaly_model(path: str = "model.pkl") -> Any:
     global _model
@@ -28,7 +27,6 @@ def load_anomaly_model(path: str = "model.pkl") -> Any:
         _model = joblib.load(path)
     return _model
 
-# ——— 3) Detect anomalies with probabilities ——————————————————————
 def detect_anomalies(
     records: List[Dict[str, Any]],
     threshold: float = 0.5
@@ -54,15 +52,14 @@ def detect_anomalies(
     anomalies = df[df["anomaly_prob"] > threshold]
     return anomalies.to_dict(orient="records")
 
-# ——— 4) Describe anomalies via OpenAI ——————————————————————————
+
 def describe_anomalies(
     anomalies: List[Dict[str, Any]],
     max_tokens: int = 256
 ) -> str:
     if not anomalies:
         return "Аномалий не обнаружено."
-
-    # Only now do we fetch/validate the key & client
+ 
     client = _get_openai_client()
 
     details = "\n".join(
